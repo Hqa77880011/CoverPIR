@@ -100,3 +100,15 @@ Supply --reference with a matched record file for paired differences. Resampling
 Layout search evaluates byte-feasible moves, swaps and copies. Optional validation_queries supplies a held-out public checkpoint-selection set while the router remains fitted to train_queries.
 
 The declared offline-cost proxy prices extra chunk placements via replica_cost_weight; no_cost removes this penalty. Physical padded database dimensions remain fixed across layouts.
+
+## Fixed reproduction setting
+
+Finite evidence-hypergraph retrieval with the actual Paillier correctness backend and fixed read budget. QA is unavailable until a real reader is explicitly supplied.
+
+The checked-in entry point fixes data seeds, methods, budgets and output paths. Inspect its commands without starting any computation:
+
+```bash
+python reproduce.py --plan
+```
+
+Remove `--plan` to execute the registered pipeline in a fresh output directory. The entry point calls the existing implementation; it does not insert paper results. Installation uses the package instructions above.
