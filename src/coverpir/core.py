@@ -1,6 +1,8 @@
 import itertools
 import json
 import re
+import string
+import time
 from collections import Counter
 
 import numpy as np
@@ -185,7 +187,8 @@ def private_read(database, index, public_key, private_key):
 
 
 def tokens(text):
-    return re.findall(r"[a-z0-9]+", text.lower())
+    normalized = text.lower().translate(str.maketrans("", "", string.punctuation))
+    return re.sub(r"\b(a|an|the)\b", " ", normalized).split()
 
 
 def generate(rng, count):
@@ -223,7 +226,7 @@ def generate(rng, count):
         }
 
 
-def run_case(case, method):
+def run_case(case, method, answerer=None):
     layout = build_layout(case, method)
     route = router(layout, case["chunks"], case["train_queries"], case["read_budget"])
     indices = (
@@ -242,12 +245,15 @@ def run_case(case, method):
         wire += size
         for record in json.loads(payload.rstrip(b"\0").decode()):
             retrieved[record["id"]] = record["text"]
-    question_tokens = set(tokens(case["query"]["question"]))
-    sentences = [s.strip() for text in retrieved.values() for s in text.split(".") if s.strip()]
-    answer = max(sentences, key=lambda s: (len(set(tokens(s)) & question_tokens), s), default="")
+    answer_started = time.perf_counter()
+    reply = answerer.answer(case["query"]["question"], retrieved) if answerer else None
+    answer_ms = (time.perf_counter() - answer_started) * 1000 if answerer else None
     return {
         "retrieved": sorted(retrieved),
-        "answer": answer,
+        "answer": None if reply is None else reply["answer"],
+        "answer_support": None if reply is None else reply["support_ids"],
+        "answerer": None if answerer is None else answerer.config,
+        "answer_latency_ms": answer_ms,
         "oracle": list(oracle_cover(layout, case["query"]["support"], case["read_budget"])),
         "layout": [sorted(b) for b in layout],
         "wire_bytes": wire,
@@ -259,17 +265,30 @@ def score(case, result):
     support = set(case["query"]["support"])
     retrieved = set(result["retrieved"])
     oracle = set().union(*(set(result["layout"][i]) for i in result["oracle"]))
-    predicted, target = Counter(tokens(result["answer"])), Counter(tokens(case["query"]["answer"]))
+    available = result.get("answer") is not None
+    prediction_tokens = tokens(result["answer"]) if available else []
+    target_tokens = tokens(case["query"]["answer"])
+    predicted, target = Counter(prediction_tokens), Counter(target_tokens)
     overlap = sum((predicted & target).values())
     precision = overlap / sum(predicted.values()) if predicted else 0
     recall = overlap / sum(target.values()) if target else 0
-    f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0
+    f1 = 2 * precision * recall / (precision + recall) if precision + recall else int(not predicted and not target)
+    special = (["yes"], ["no"], ["noanswer"])
+    if (prediction_tokens in special or target_tokens in special) and prediction_tokens != target_tokens:
+        f1 = 0.0
+    cited = set(result.get("answer_support") or [])
+    support_precision = len(cited & support) / len(cited) if cited else 0.0
+    support_recall = len(cited & support) / len(support) if support else 1.0
     return {
         "deployed_ec": int(support <= retrieved),
         "oracle_ec": int(support <= oracle),
         "support_recall": len(support & retrieved) / len(support) if support else 1,
-        "answer_f1": f1,
-        "answer_exact_match": int(tokens(result["answer"]) == tokens(case["query"]["answer"])),
+        "answer_f1": f1 if available else None,
+        "answer_exact_match": int(prediction_tokens == target_tokens) if available else None,
+        "answer_support_precision": support_precision if available else None,
+        "answer_support_recall": support_recall if available else None,
+        "answer_support_f1": 2 * support_precision * support_recall / (support_precision + support_recall) if available and support_precision + support_recall else (0.0 if available else None),
+        "answer_latency_ms": result.get("answer_latency_ms"),
         "physical_storage_bytes": case["block_slots"] * case["block_bytes"],
         "online_bytes": result["wire_bytes"],
         "logical_reads": result["logical_reads"],

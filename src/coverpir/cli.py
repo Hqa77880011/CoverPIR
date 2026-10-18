@@ -13,6 +13,7 @@ import numpy as np
 import psutil
 
 from . import core
+from .answering import load_answerer
 
 
 def read_jsonl(path):
@@ -63,13 +64,13 @@ def summarize(rows):
     return report
 
 
-def execute(cases, method, output):
+def execute(cases, method, output, answerer=None):
     rows = []
     process = psutil.Process()
     for case in cases:
         start_cpu = time.process_time()
         start = time.perf_counter()
-        result = core.run_case(case, method)
+        result = core.run_case(case, method, answerer=answerer)
         elapsed = time.perf_counter() - start
         cpu = time.process_time() - start_cpu
         metrics = core.score(case, result)
@@ -153,6 +154,7 @@ def main():
         item = sub.add_parser(name)
         item.add_argument("--data", required=True)
         item.add_argument("--output", required=True)
+        item.add_argument("--answerer-config", help="Trusted local command or offline Transformers JSON configuration")
         item.add_argument(
             "--methods",
             nargs="+",
@@ -172,8 +174,9 @@ def main():
         write_jsonl(args.output, rows)
     elif args.command in ("run", "suite"):
         cases = read_jsonl(args.data)
+        answerer = load_answerer(args.answerer_config)
         for method in args.methods:
-            execute(cases, method, Path(args.output) / method)
+            execute(cases, method, Path(args.output) / method, answerer)
     else:
         plot(args.inputs, args.output)
 

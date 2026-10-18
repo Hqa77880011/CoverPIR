@@ -13,6 +13,9 @@ dependencies = ["numpy>=1.24","scipy>=1.11","matplotlib>=3.7","psutil>=5.9","sci
 [project.scripts]
 coverpir = "coverpir.cli:main"
 
+[project.optional-dependencies]
+local = ["torch>=2.4", "transformers>=4.45"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
