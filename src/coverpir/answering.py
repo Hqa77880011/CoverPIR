@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+import re
 import subprocess
 
 
@@ -21,6 +22,40 @@ def validate_answer(output, retrieved):
     if not set(support) <= set(retrieved):
         raise ValueError("Answerer cited evidence outside the recovered records")
     return {"answer": output["answer"], "support_ids": sorted(set(support))}
+
+
+class FiniteRelationsAnswerer:
+    """Execute three actual joins in the registered finite relational language."""
+
+    def __init__(self, config):
+        self.config = dict(config)
+
+    def answer(self, question, retrieved):
+        query = re.fullmatch(r"In which region was the governor of City (\d+) born\?",
+                             question.strip(), flags=re.IGNORECASE)
+        empty = {"answer": "", "support_ids": []}
+        if query is None:
+            return empty
+        patterns = (
+            (r"City (\d+) is governed by Person (\d+)\.", "City ", "Person "),
+            (r"Person (\d+) was born in District (\d+)\.", "Person ", "District "),
+            (r"District (\d+) belongs to Region (\d+)\.", "District ", "Region "),
+        )
+        relations = [{} for _ in patterns]
+        for key, text in retrieved.items():
+            for relation, (pattern, left, right) in zip(relations, patterns):
+                fact = re.fullmatch(pattern, text.strip(), flags=re.IGNORECASE)
+                if fact:
+                    source, target = left + fact[1], right + fact[2]
+                    relation.setdefault(source, {}).setdefault(target, []).append(str(key))
+        current, support = "City " + query[1], []
+        for relation in relations:
+            candidates = relation.get(current, {})
+            if len(candidates) != 1:
+                return empty  # Missing or contradictory recovered evidence is unresolved.
+            current, records = next(iter(candidates.items()))
+            support.append(min(records))
+        return validate_answer({"answer": current, "support_ids": support}, retrieved)
 
 
 class CommandAnswerer:
@@ -95,9 +130,11 @@ def load_answerer(path):
     if "cwd" in config:
         config["cwd"] = str((config_path.parent / config["cwd"]).resolve())
     backend = config.get("backend", "command")
+    if backend == "finite_relations":
+        return FiniteRelationsAnswerer(config)
     if backend == "command":
         return CommandAnswerer(config)
     if backend == "transformers":
         config["model_path"] = str((config_path.parent / config["model_path"]).resolve())
         return TransformersAnswerer(config)
-    raise ValueError("Answerer backend must be command or transformers")
+    raise ValueError("Answerer backend must be finite_relations, command or transformers")

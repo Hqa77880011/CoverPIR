@@ -1,4 +1,4 @@
-"""Finite evidence-hypergraph retrieval with the actual Paillier correctness backend and fixed read budget. QA is unavailable until a real reader is explicitly supplied."""
+"""Finite evidence-hypergraph retrieval and three-hop relational QA over actual recovered evidence, with fixed Paillier reads."""
 
 import argparse
 import json
@@ -14,7 +14,7 @@ def build_steps(args):
     output = (ROOT / args.output).resolve()
     return [
         ["-m", "coverpir", "prepare", "--count", "200", "--seed", "17", "--output", str(output / "workload.jsonl")],
-        ["-m", "coverpir", "suite", "--data", str(output / "workload.jsonl"), "--output", str(output / "comparison")],
+        ["-m", "coverpir", "suite", "--data", str(output / "workload.jsonl"), "--answerer-config", "configs/finite_reader.json", "--output", str(output / "comparison")],
     ]
 
 

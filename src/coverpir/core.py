@@ -193,16 +193,20 @@ def tokens(text):
 
 def generate(rng, count):
     for index in range(count):
+        people, districts, regions = [list(range(8)) for _ in range(3)]
+        rng.shuffle(people)
+        rng.shuffle(districts)
+        rng.shuffle(regions)
         chunks = {}
         for i in range(8):
-            chunks[str(3 * i)] = f"City {i} is governed by Person {i}."
-            chunks[str(3 * i + 1)] = f"Person {i} was born in District {i}."
-            chunks[str(3 * i + 2)] = f"District {i} belongs to Region {i}."
+            chunks[str(3 * i)] = f"City {i} is governed by Person {people[i]}."
+            chunks[str(3 * i + 1)] = f"Person {i} was born in District {districts[i]}."
+            chunks[str(3 * i + 2)] = f"District {i} belongs to Region {regions[i]}."
         train = [
             {
                 "question": f"In which region was the governor of City {i} born?",
-                "support": [str(3 * i + j) for j in range(3)],
-                "answer": f"Region {i}",
+                "support": [str(3 * i), str(3 * people[i] + 1), str(3 * districts[people[i]] + 2)],
+                "answer": f"Region {regions[districts[people[i]]]}",
             }
             for i in range(6)
         ]
@@ -214,8 +218,8 @@ def generate(rng, count):
             "train_queries": train,
             "query": {
                 "question": f"In which region was the governor of City {target} born?",
-                "support": [str(3 * target + j) for j in range(3)],
-                "answer": f"Region {target}",
+                "support": [str(3 * target), str(3 * people[target] + 1), str(3 * districts[people[target]] + 2)],
+                "answer": f"Region {regions[districts[people[target]]]}",
             },
             "read_budget": 2,
             "block_bytes": 512,

@@ -28,13 +28,13 @@ Each corpus maps chunk IDs to text. Train queries provide question and complete 
 python -m coverpir prepare --count 200 --seed 17 --output data/workload.jsonl
 ```
 
-The generator creates finite workloads from the formal model. Each JSONL row is one scenario. `--count` controls corpus size and `--seed` controls generation. Imported cases use the same schema. Generate calibration and test scenarios independently.
+The generator creates finite relational workloads with independently permuted City-to-Person, Person-to-District and District-to-Region mappings. Training/test support IDs and answers follow the actual three-hop chain. City numbers cannot determine Region numbers. Each JSONL row is one scenario; `--count` and `--seed` fix its size and randomness. Imported cases use the same schema.
 
 ## Execute and compare
 
 ```bash
-python -m coverpir run --data data/workload.jsonl --output runs/main
-python -m coverpir suite --data data/workload.jsonl --output runs/comparison
+python -m coverpir run --data data/workload.jsonl --answerer-config configs/finite_reader.json --output runs/main
+python -m coverpir suite --data data/workload.jsonl --answerer-config configs/finite_reader.json --output runs/comparison
 ```
 
 Select methods with `--methods`. coverpir optimizes deployed complete-edge coverage; semantic uses capacity-aware TF-IDF cluster packing; random_copies accepts feasible copies; pairwise rewards pair co-occurrence; no_copies pads the same physical dimensions; gold_routing uses test supports as an oracle.
@@ -58,6 +58,8 @@ The single-server PIR backend uses 2048-bit Paillier encrypted one-hot selectors
 ## Multi-hop answering from recovered evidence
 
 Choose one fixed answer model and generation configuration for every layout. The answering stage starts only after exactly B private reads have completed. It receives the question and recovered `{id,text}` records, and may combine all required hops. A command or model failure propagates; there is no word-overlap fallback. Answer EM/F1 lowercases, removes punctuation and English articles, and normalizes whitespace; mismatched yes/no/noanswer answers score zero if either side is special. Cited-support precision/recall/F1 is reported separately. The answerer configuration and local answer latency are retained in results. An offline Transformers model is loaded once before per-case timing; measured answer latency covers its generation, not cold-start loading.
+
+The fixed finite setting uses `configs/finite_reader.json` with `{"backend":"finite_relations"}`. The built-in reader parses exactly these registered fact forms: `City C is governed by Person P.`, `Person P was born in District D.`, and `District D belongs to Region R.` It performs the three joins using only recovered records and returns the actual supporting chunk IDs. A missing hop, conflicting destination or unsupported question returns an empty answer/support list. For example City 6 → Person 2 → District 5 → Region 1 yields Region 1; Region 6 is never inferred from the question identifier. This is an executable finite relational QA setting with measured answer EM/F1 and citation metrics, requiring no external model.
 
 For an existing local instruction model, install `python -m pip install -e ".[local]"` and save an answerer JSON file:
 
@@ -86,7 +88,7 @@ A trusted local QA executable can instead use `{"backend":"command","command":["
 
 It must return one stdout JSON object, for example `{"answer":"Region 7","support_ids":["21","22","23"]}`; this example illustrates the protocol and is not a built-in research answerer. `support_ids` must be recovered chunk IDs. An insufficient-evidence reply is `{"answer":"","support_ids":[]}`. Gold supports and answers remain confined to evaluation/oracle routing. Use local processes because forwarding the private question to an external answering service changes the paper's trusted-client boundary.
 
-Running without `--answerer-config` is explicitly retrieval-only: `answer_f1`, `answer_exact_match` and answer-support metrics are null. Existing historical query-overlap answer scores are not comparable to this actual QA interface. HotpotQA fullwiki corpus/chunk/support preparation and a trained local reader remain required for the paper-scale evaluation; the supplied finite generator is a protocol workload.
+Running without `--answerer-config` is explicitly retrieval-only: `answer_f1`, `answer_exact_match` and answer-support metrics are null. Existing historical query-overlap answer scores are not comparable to this actual QA interface. For unrestricted natural-language corpora, import the corpus/support schema and select a command or Transformers reader using the same recovered-evidence boundary.
 
 
 ## Uncertainty and paired comparisons
@@ -103,7 +105,7 @@ The declared offline-cost proxy prices extra chunk placements via replica_cost_w
 
 ## Fixed reproduction setting
 
-Finite evidence-hypergraph retrieval with the actual Paillier correctness backend and fixed read budget. QA is unavailable until a real reader is explicitly supplied.
+Finite evidence-hypergraph retrieval and actual three-hop QA over recovered evidence, using independently permuted relations, a fixed Paillier read budget and the registered finite reader.
 
 The checked-in entry point fixes data seeds, methods, budgets and output paths. Inspect its commands without starting any computation:
 
